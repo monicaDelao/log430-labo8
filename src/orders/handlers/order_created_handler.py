@@ -24,10 +24,25 @@ class OrderCreatedHandler(EventHandler):
     
     def handle(self, event_data: Dict[str, Any]) -> None:
         """Execute every time the event is published"""
-        # TODO: Remplacez TOUTES les lignes de cette méthode par les lignes de la méthode _handle_implemented. Il suffit de copier-coller.
-        event_data['event'] = "StockDecreased"
-        self.logger.debug(f"payment_link={event_data['payment_link']}")
-        OrderEventProducer().get_instance().send(config.KAFKA_TOPIC, value=event_data)
+        order_event_producer = OrderEventProducer()
+        session = None
+        try:
+            # La création de la comande a réussi, alors déclenchez la mise à jour du stock.
+            session = get_sqlalchemy_session()
+            check_out_items_from_stock(session, event_data['order_items'])
+            session.commit()
+            # Si la mise à jour du stock a réussi, déclenchez StockDecreased.
+            event_data['event'] = "StockDecreased"
+        except Exception as e:
+            if session is not None:
+                session.rollback()
+            # Si la mise à jour du stock a échoué, déclenchez StockDecreaseFailed.
+            event_data['event'] = "StockDecreaseFailed"
+            event_data['error'] = str(e)
+        finally:
+            if session is not None:
+                session.close()
+            order_event_producer.get_instance().send(config.KAFKA_TOPIC, value=event_data)
 
     def _handle_implemented(self, event_data: Dict[str, Any]) -> None:
         """

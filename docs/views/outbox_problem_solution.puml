@@ -1,0 +1,71 @@
+@startuml
+title Problème et Solution - Défaillance avant Persistance Outbox
+
+!define AWSPUML https://raw.githubusercontent.com/awslabs/aws-icons-for-plantuml/v15.0/dist
+!includeurl AWSPUML/AWSCommon.puml
+!includeurl AWSPUML/Database/Database.puml
+
+participant "OrderCreated\nHandler" as OCH
+participant "StockDecreased\nHandler" as SDH
+participant "MySQL\nDatabase" as DB
+participant "Outbox\nTable" as OB
+participant "OutboxProcessor" as OP
+
+== Implémentation ACTUELLE (Problématique) ==
+
+OCH -> DB: 1. Décrémente Stock
+activate DB
+DB --> OCH: Stock mis à jour
+deactivate DB
+
+OCH -> SDH: 2. Événement StockDecreased
+activate SDH
+
+SDH -> OB: 3. Crée item Outbox
+activate OB
+note right: ⚠️ POINT DE DÉFAILLANCE\nSi crash avant commit,\nitem Outbox perdu
+OB -> OB: session.commit()
+OB --> SDH: Item persisté
+deactivate OB
+
+SDH -> OP: 4. OutboxProcessor.run()
+activate OP
+OP -> OP: Traite paiement
+OP --> SDH: Résultat
+deactivate OP
+deactivate SDH
+
+== Problème: Crash avant étape 3 ==
+
+OCH -> DB: 1. Décrémente Stock ✅
+OCH -X SDH: 2. ❌ CRASH - Événement perdu
+note over SDH, OB #FFAAAA: Stock décrémenté mais\naucun item Outbox créé\n= INCONSISTANCE
+
+== Solution AMÉLIORÉE (Transaction Atomique) ==
+
+OCH -> DB: 1. BEGIN TRANSACTION
+activate DB
+
+OCH -> DB: 2. Décrémente Stock
+OCH -> OB: 3. Crée item Outbox
+activate OB
+
+OCH -> DB: 4. COMMIT (Stock + Outbox ensemble)
+note right: ✅ ATOMICITÉ\nTOUT ou RIEN
+OB --> OCH: Transaction réussie
+deactivate OB
+deactivate DB
+
+OCH -> OP: 5. OutboxProcessor.run()
+activate OP
+OP -> OP: Traite paiement
+OP --> OCH: Résultat
+deactivate OP
+
+== Avantage: Même en cas de crash ==
+
+OCH -> DB: 1-3. Opérations métier + Outbox
+OCH -X DB: 4. ❌ CRASH avant COMMIT
+note over DB, OB #AAFFAA: ROLLBACK automatique\nAucune modification persistée\n= COHÉRENCE préservée
+
+@enduml

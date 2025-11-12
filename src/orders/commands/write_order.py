@@ -5,7 +5,6 @@ Auteurs : Gabriel C. Ullmann, Fabio Petrillo, 2025
 """
 from datetime import datetime
 import json
-import requests
 import config
 from logger import Logger
 from orders.commands.order_event_producer import OrderEventProducer
@@ -20,6 +19,7 @@ logger = Logger.get_instance("add_order")
 def add_order(user_id: int, items: list):
     """Insert order with items in MySQL, keep Redis in sync"""
     event_data = {'event': 'OrderCreationFailed'} 
+    session = None
     try:
         if not items:
             raise ValueError("Cannot create order. An order must have 1 or more items.")
@@ -86,11 +86,13 @@ def add_order(user_id: int, items: list):
     except Exception as e:
         # Déclencher l'événement OrderCreationFailed
         event_data['error'] = str(e)
-        session.rollback()
+        if session is not None:
+            session.rollback()
         raise e
     finally:
         OrderEventProducer().get_instance().send(config.KAFKA_TOPIC, value=event_data)
-        session.close()
+        if session is not None:
+            session.close()
 
 def modify_order(order_id: int, is_paid: bool, payment_id: int):
     session = get_sqlalchemy_session()

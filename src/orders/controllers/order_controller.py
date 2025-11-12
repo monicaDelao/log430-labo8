@@ -16,7 +16,7 @@ def create_order(request):
     """Create order, use WriteOrder model"""
     payload = request.get_json() or {}
     user_id = payload.get('user_id')
-    items = payload.get('items', [])
+    items = payload.get('order_items', [])  # Correction: order_items au lieu de items
     try:
         order_id = add_order(user_id, items)
         return jsonify({'order_id': order_id}), 201

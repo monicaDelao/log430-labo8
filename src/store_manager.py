@@ -16,6 +16,7 @@ from stocks.handlers.stock_decrease_failed_handler import StockDecreaseFailedHan
 from stocks.handlers.stock_increased_handler import StockIncreasedHandler
 from payments.handlers.payment_created_handler import PaymentCreatedHandler
 from payments.handlers.payment_creation_failed_handler import PaymentCreationFailedHandler
+from payments.outbox_processor import OutboxProcessor
 from orders.queries.order_event_consumer import OrderEventConsumer
 from stocks.schemas.query import Query
 from flask import Flask, request, jsonify
@@ -23,6 +24,12 @@ from orders.controllers.order_controller import create_order, remove_order, get_
 from orders.controllers.user_controller import create_user, remove_user, get_user
 from stocks.controllers.product_controller import create_product, remove_product, get_product
 from stocks.controllers.stock_controller import get_stock, populate_redis_on_startup, set_stock, get_stock_overview
+
+# il faut éxécuter le processeur seulement 1 fois à chaque initialisation
+is_outbox_processor_running = False
+if not is_outbox_processor_running:
+   OutboxProcessor().run()
+   is_outbox_processor_running = True
 
 app = Flask(__name__)
 

@@ -51,6 +51,21 @@ def update_stock_mysql(session, order_items, operation):
             else:
                 pid = item['product_id']
                 qty = item['quantity']
+            
+            # Si c'est une décrémentation, vérifier d'abord que le stock est suffisant
+            if operation == "-":
+                current_stock_result = session.execute(
+                    text("SELECT quantity FROM stocks WHERE product_id = :pid"),
+                    {"pid": pid}
+                ).fetchone()
+                
+                if current_stock_result is None:
+                    raise ValueError(f"Product ID {pid} not found in stock table")
+                
+                current_stock = current_stock_result[0]
+                if current_stock < qty:
+                    raise ValueError(f"Insufficient stock for product {pid}. Available: {current_stock}, Required: {qty}")
+            
             session.execute(
                 text(f"""
                     UPDATE stocks 
